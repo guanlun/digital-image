@@ -1,51 +1,19 @@
 // =============================================================================
-// Template Program for VIZA654/CSCE646 at Texas A&M University
-// Created by Ariel Chisholm
-// 09.01.2009
+// Project 01
+// Guanlun Zhao
+// Sept. 12, 2016
+// Run instructions:
+//   * Use 'make' to compile the source.
+//   * run ./ppmview <INPUT_FILE> <OUTPUT_FILE>.
+//   * Note that <OUTPUT_FILE> is optional, but <INPUT_FILE> is required.
+// Bonus point implemented:
+//   * This programs reads P3/P6 and writes P6.
 //
-// This file is supplied with an associated makefile. Put both files in the same
-// directory, navigate to that directory from the Linux shell, and type 'make'.
-// This will create a program called 'ppmview' that you can run by entering
-// 'ppmview' as a command in the shell. The program will display a small white
-// pixmap. Clicking on the pixmap display window will close the program.
-//
-// This template program is designed to help you get jump-started on your first
-// ppmview assignment. If you are new to programming in Linux, there is an
-// excellent introduction to makefile structure and the gcc compiler here:
-//
-// http://www.cs.txstate.edu/labs/tutorials/tut_docs/Linux_Prog_Environment.pdf
-//
-// For viewing and editing code, Gedit is a good all-purpose text editor
-// available on the lab's Linux systems. You can find it on the main GNOME
-// menu under Debian>Apps>Editors.
-// =============================================================================
-
-// =============================================================================
-// [Put the project name here.]
-// [Put your name here.]
-// [Put the date here]
-// [Put run instructions here]
-//
-// Always put a comment block like this at the top of your source files. You can
-// see in the prior comment block my own use of this structure to document the
-// origin and purpose of this template file.
-// =============================================================================
-
-// =============================================================================
-// For all your projects, please adopt a consistent, readable programming style.
-// Specifically pay attention to your maximum line lengths and indentation
-// levels. A variable maximum line length or indentation level will almost
-// always make your code unnecessarily difficult to read.
-//
-// Google (you may have heard of them) wisely mandates in their own C++ style
-// guide a maximum line length of 80 characters, and a indentation level of two
-// spaces (no tabs, just as in this document). This a very good coding style
-// and I recommend you adopt it unless you have already developed a readable and
-// consistent style of your own.
 // =============================================================================
 
 #include <cstdlib>
 #include <cstdio>
+#include <cstring>
 #include <iostream>
 #include <GL/glut.h>
 
@@ -79,8 +47,24 @@ unsigned char *pixmap;
 // =============================================================================
 void readPPM(FILE* input)
 {
-    char buff[255];
-    fscanf(input, "%s ", buff);
+    char format[255];
+    fscanf(input, "%s", format);
+    fgetc(input);
+
+    char c;
+
+    while (true) {
+        c = fgetc(input);
+        if (c != '#') {
+            // go back by 1 since it's no longer a comment line
+            fseek(input, -1, SEEK_CUR);
+            break;
+        }
+        
+        while (c != '\n') {
+            c = fgetc(input);
+        }
+    }
 
     fscanf(input, "%d %d %d", &width, &height, &maxcolor);
     fgetc(input);
@@ -93,26 +77,48 @@ void readPPM(FILE* input)
 
     int y, x, pixel;
     unsigned char red, green, blue;
+    int i_red, i_green, i_blue;
     for(y = 0; y < height; y++) {
         for(x = 0; x < width; x++) {
-            red = fgetc(input);
-            green = fgetc(input);
-            blue = fgetc(input);
-
             pixel = ((height - y - 1) * width + x) * 3; 
 
-            pixmap[pixel] = red;
-            pixel++;
-            pixmap[pixel] = green;
-            pixel++;
-            pixmap[pixel] = blue;
+            if (strcmp(format, "P6") == 0) {
+                red = fgetc(input);
+                green = fgetc(input);
+                blue = fgetc(input);
+
+                pixmap[pixel] = red;
+                pixmap[pixel + 1] = green;
+                pixmap[pixel + 2] = blue;
+            } else if (strcmp(format, "P3") == 0) {
+                fscanf(input, "%d %d %d ", &i_red, &i_green, &i_blue);
+
+                pixmap[pixel] = i_red;
+                pixmap[pixel + 1] = i_green;
+                pixmap[pixel + 2] = i_blue;
+            } else {
+                cout << "Only P3 and P6 are supported" << endl;
+            }
         }
     }
 }
+
 void writePPM(FILE* output)
 {
-    cout << output << endl;
     fprintf(output, "P6\n");
+
+    fprintf(output, "%d %d\n%d\n", width, height, maxcolor);
+
+    int x, y, pixel = 0;
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < width; x++) {
+            pixel = ((height - y - 1) * width + x) * 3; 
+
+            fputc(pixmap[pixel], output);
+            fputc(pixmap[pixel + 1], output);
+            fputc(pixmap[pixel + 2], output);
+        }
+    }
 
     fclose(output);
 }
@@ -161,22 +167,28 @@ int main(int argc, char *argv[])
         char* inFilename = argv[1];
         FILE* input = fopen(inFilename, "r");
 
+        if (input == NULL) {
+            cout << "File " << inFilename << " does not exist" << endl;
+            return 0;
+        }
+
         readPPM(input);
     } else {
         cout << "Invalid Arguments!" << endl;
     }
 
     if (argc == 3) {
-        const char* outFilename = argv[3];
+        const char* outFilename = argv[2];
 
         FILE* output = fopen(outFilename, "w");
 
-        cout << "writing" << endl;
+        if (output == NULL) {
+            cout << "Cout not write to file " << outFilename << endl;
+            return 0;
+        }
 
         writePPM(output);
     }
-
-    return 0;
 
     // OpenGL commands
     glutInit(&argc, argv);
