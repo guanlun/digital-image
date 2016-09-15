@@ -1,5 +1,5 @@
 // =============================================================================
-// VIZA654/CSCE646 at Texas A&M University
+
 // Homework 0
 // Created by Anton Agana based from Ariel Chisholm's template
 // 05.23.2011
@@ -13,6 +13,15 @@
 // excellent introduction to makefile structure and the gcc compiler here:
 //
 // http://www.cs.txstate.edu/labs/tutorials/tut_docs/Linux_Prog_Environment.pdf
+//
+// =============================================================================
+
+// =============================================================================
+// Guanlun Zhao
+// Sept. 12, 2016
+// Run instructions:
+//   * Use 'make' to compile the source.
+//   * run ./pr01 <INPUT_ARG> (red, green, blue, all, circle)
 //
 // =============================================================================
 
@@ -110,7 +119,7 @@ void drawCircle() {
 
             int r, g, b;
 
-            if (sqrt(xDist * xDist + yDist * yDist) < 100) {
+            if (sqrt(xDist * xDist + yDist * yDist) < 200) {
                 r = 0xFF;
                 g = 0xFF;
                 b = 0x00;
@@ -127,17 +136,78 @@ void drawCircle() {
     }
 }
 
+void drawMaterial() {
+    int centerX = width / 2;
+    int centerY = height / 2;
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int i = (y * width + x) * 3;
+
+            int r, g, b;
+
+            int v1 = x + y;
+            int v2 = x + 1.6 * y;
+
+            if (v1 < 400) {
+                r = 0xCF;
+                g = 0xBF;
+                b = 0x2E;
+
+            } else if (v2 < 900) {
+                r = 0x62;
+                g = 0xA3;
+                b = 0xC1;
+            } else {
+                r = 0x2D;
+                g = 0x77;
+                b = 0xB4;
+
+                if (v2 > 900 && v2 < 950) {
+                    double f = (v2 - 900) / 50.0 * 0.4 + 0.6;
+                    r *= f;
+                    g *= f;
+                    b *= f;
+                }
+            }
+
+            if (v1 > 400 && v1 < 440) {
+                double f = (v1 - 400) / 40.0 * 0.4 + 0.6;
+                r *= f;
+                g *= f;
+                b *= f;
+            }
+
+            r /= 1 - 0.0005 * y;
+            g /= 1 - 0.0005 * y;
+            b /= 1 - 0.0005 * y;
+
+            pixmap[i] = r;
+            pixmap[i + 1] = g;
+            pixmap[i + 2] = b;
+        }
+    }
+}
+
 bool drawPixels(const char* type) {
     if (strcmp(type, "red") == 0) {
         drawSolidColor(0xFF, 0x00, 0x00);
+        return true;
     } else if (strcmp(type, "green") == 0) {
         drawSolidColor(0x00, 0xFF, 0x00);
+        return true;
     } else if (strcmp(type, "blue") == 0) {
         drawSolidColor(0x00, 0x00, 0xFF);
+        return true;
     } else if (strcmp(type, "all") == 0) {
         drawAllColors();
+        return true;
     } else if (strcmp(type, "circle") == 0) {
         drawCircle();
+        return true;
+    } else if (strcmp(type, "material") == 0) {
+        drawMaterial();
+        return true;
     } else {
         return false;
     }
@@ -190,10 +260,16 @@ int main(int argc, char *argv[])
 
     if (argc != 2) {
         cout << "Invalid Input" << endl;
+        return 0;
     } else {
         char* type = argv[1];
 
         bool ret = drawPixels(type);
+
+        if (!ret) {
+            cout << "Invalid Input" << endl;
+            return 0;
+        }
     }
 
 
