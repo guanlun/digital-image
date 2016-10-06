@@ -21,6 +21,7 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.regex.Matcher;
 
 class RGB {
     int red;
@@ -172,40 +173,6 @@ class Vec2 {
 }
 
 class Curve {
-    static class Segment {
-        Vec2 p0;
-        Vec2 p1;
-        Vec2 v0;
-        Vec2 v1;
-
-        ArrayList<Vec2> intermediatePoints;
-
-        Segment(Vec2 p0, Vec2 p1, Vec2 v0, Vec2 v1) {
-            this.p0 = p0;
-            this.p1 = p1;
-            this.v0 = v0;
-            this.v1 = v1;
-        }
-
-        Vec2 getValueAt(double t) {
-            double x =
-                    (2 * Math.pow(t, 3) - 3 * t * t + 1) * p0.x
-                    + (Math.pow(t, 3) - 2 * t * t + t) * v0.x
-                    + (-2 * Math.pow(t, 3) + 3 * t * t) * p1.x
-                    + (Math.pow(t, 3) - t * t) * v1.x;
-
-            double y =
-                    (2 * Math.pow(t, 3) - 3 * t * t + 1) * p0.y
-                    + (Math.pow(t, 3) - 2 * t * t + t) * v0.y
-                    + (-2 * Math.pow(t, 3) + 3 * t * t) * p1.y
-                    + (Math.pow(t, 3) - t * t) * v1.y;
-
-            return new Vec2(x, y);
-        }
-    }
-
-    ArrayList<Segment> segments;
-
     ArrayList<Vec2> points;
 
     Curve() {
@@ -218,6 +185,10 @@ class Curve {
 class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
     private Curve curve;
 
+    private ImageDisplay imageDisplay;
+
+    private double[] heightMap;
+
     private static int DIM = 500;
     private static int OFFSET = 20;
 
@@ -226,8 +197,11 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
     private static final int SELECTION_V0 = 3;
     private static final int SELECTION_V1 = 4;
 
-
     private Vec2 selectedPoint;
+
+    // Restrictions on the x range when moving control points
+    private double minX;
+    private double maxX;
 
     CurvePanel() {
         super();
@@ -238,6 +212,19 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
         this.addMouseMotionListener(this);
 
         this.selectedPoint = null;
+
+        this.heightMap = new double[256];
+
+        this.minX = 0;
+        this.maxX = 1;
+    }
+
+    void setTargetDisplay(ImageDisplay display) {
+        this.imageDisplay = display;
+    }
+
+    private void updateImage() {
+        this.imageDisplay.applyMapping(this.heightMap);
     }
 
     @Override
@@ -246,6 +233,7 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
         g2.clearRect(0, 0, 600, 600);
 
         g2.setColor(Color.BLACK);
+        g2.setStroke(new BasicStroke(1));
         g2.drawRect(OFFSET, OFFSET, DIM, DIM);
 
         g2.setColor(new Color(192, 192, 192));
@@ -258,6 +246,7 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
         }
 
         g2.setColor(Color.BLACK);
+        g2.setStroke(new BasicStroke(2));
 
         int pointCount = this.curve.points.size();
 
@@ -293,15 +282,14 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
             Vec2 v0 = tangentVecs.get(i);
             Vec2 v1 = tangentVecs.get(i + 1);
 
-            double lastX = p0.x;
-            double lastY = p0.y;
-
-            for (double t = 0.01; t <= 1.01; t += 0.01) {
+            for (double t = 0.003; t <= 1; t += 0.003) {
                 double x =
                         (2 * Math.pow(t, 3) - 3 * t * t + 1) * p0.x
                                 + (Math.pow(t, 3) - 2 * t * t + t) * v0.x
                                 + (-2 * Math.pow(t, 3) + 3 * t * t) * p1.x
                                 + (Math.pow(t, 3) - t * t) * v1.x;
+
+                x = Math.min(1, Math.max(0, x));
 
                 double y =
                         (2 * Math.pow(t, 3) - 3 * t * t + 1) * p0.y
@@ -309,16 +297,29 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
                                 + (-2 * Math.pow(t, 3) + 3 * t * t) * p1.y
                                 + (Math.pow(t, 3) - t * t) * v1.y;
 
-                g2.drawLine(
-                        (int) Math.round(OFFSET + lastX * DIM),
-                        (int) Math.round(OFFSET + (1 - lastY) * DIM),
-                        (int) Math.round(OFFSET + x * DIM),
-                        (int) Math.round(OFFSET + (1 - y) * DIM)
-                );
+                y = Math.min(1, Math.max(0, y));
 
-                lastX = x;
-                lastY = y;
+                int heightIndex = (int) (Math.round(x * 255));
+                this.heightMap[heightIndex] = y;
             }
+        }
+
+        double lastX = 0;
+        double lastY = 0;
+
+        for (int heightIndex = 0; heightIndex < 256; heightIndex++) {
+            double x = heightIndex / 256.0;
+            double y = this.heightMap[heightIndex];
+
+            g2.drawLine(
+                    (int) Math.round(OFFSET + lastX * DIM),
+                    (int) Math.round(OFFSET + (1 - lastY) * DIM),
+                    (int) Math.round(OFFSET + x * DIM),
+                    (int) Math.round(OFFSET + (1 - y) * DIM)
+            );
+
+            lastX = x;
+            lastY = y;
         }
 
         for (Vec2 pt : this.curve.points) {
@@ -337,7 +338,9 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
 
         int insertIndex = -1;
 
-        for (int i = 0; i < this.curve.points.size(); i++) {
+        int pointCount = this.curve.points.size();
+
+        for (int i = 0; i < pointCount; i++) {
             Vec2 point = this.curve.points.get(i);
 
             int dx = (int)(point.x * DIM - x);
@@ -347,6 +350,16 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
 
             if (dist < 10) {
                 this.selectedPoint = point;
+
+                if (i == 0) {
+                    this.maxX = this.curve.points.get(i + 1).x - 0.15;
+                } else if (i == pointCount - 1) {
+                    this.minX = this.curve.points.get(i - 1).x + 0.15;
+                } else {
+                    this.minX = this.curve.points.get(i - 1).x + 0.15;
+                    this.maxX = this.curve.points.get(i + 1).x - 0.15;
+                }
+
                 return;
             }
 
@@ -356,13 +369,25 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
         }
 
         // No near points found, add a new point
-        Vec2 point = new Vec2((double)(x) / DIM, 1 - (double)(y) / DIM);
+        double newPtX = (double)(x) / DIM;
+        double newPtY = 1 - (double)(y) / DIM;
+        Vec2 point = new Vec2(newPtX, newPtY);
 
-        this.curve.points.add(insertIndex, point);
+        double minX = this.curve.points.get(insertIndex - 1).x + 0.15;
+        double maxX = this.curve.points.get(insertIndex).x - 0.15;
 
-        this.selectedPoint = point;
+        if (newPtX > minX && newPtX < maxX) {
+            this.curve.points.add(insertIndex, point);
+
+            this.selectedPoint = point;
+
+            this.minX = minX;
+            this.maxX = maxX;
+        }
 
         this.repaint();
+
+        this.updateImage();
     }
 
     @Override
@@ -386,13 +411,15 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
             return;
         }
 
-        double x = Math.min(1, Math.max(0, ((double)(e.getX()) - OFFSET) / DIM));
+        double x = Math.min(this.maxX, Math.max(this.minX, ((double)(e.getX()) - OFFSET) / DIM));
         double y = Math.min(1, Math.max(0, 1 - ((double)(e.getY()) - OFFSET) / DIM));
 
         this.selectedPoint.x = x;
         this.selectedPoint.y = y;
 
         this.repaint();
+
+        this.updateImage();
     }
 
     @Override
@@ -401,11 +428,16 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
 }
 
 class ImageDisplay {
+    private BufferedImage origImg;
     private BufferedImage img;
     private BufferedImage hueReplacementImg;
 
-    public ImageDisplay() {
+    private JLabel imageLabel;
+
+    public ImageDisplay(JLabel label) {
         JFileChooser fc = new JFileChooser();
+
+        this.imageLabel = label;
     }
 
     public void loadImageFromFile(File f) throws IOException {
@@ -416,6 +448,13 @@ class ImageDisplay {
         Graphics2D g = this.img.createGraphics();
         g.drawImage(image, 0, 0, null);
         g.dispose();
+
+        this.origImg = new BufferedImage(image.getWidth(null), image.getHeight(null), BufferedImage.TYPE_INT_RGB);
+        g = this.origImg.createGraphics();
+        g.drawImage(image, 0, 0, null);
+        g.dispose();
+
+        this.imageLabel.setIcon(new ImageIcon(this.img));
     }
 
     public void loadHueReplacementImage(File f) throws IOException {
@@ -448,15 +487,32 @@ class ImageDisplay {
                 this.img.setRGB(x, y, baseHsvColor.toRGB().toInt());
             }
         }
+
+        this.imageLabel.setIcon(new ImageIcon(this.img));
     }
 
-    public BufferedImage getImage() {
-        return this.img;
+    public void applyMapping(double[] heightMap) {
+        for (int y = 0; y < this.origImg.getHeight(); y++) {
+            for (int x = 0; x < this.origImg.getWidth(); x++) {
+                int baseColor = this.origImg.getRGB(x, y);
+
+                RGB rgb = RGB.fromInt(baseColor);
+
+                rgb.red = (int) Math.floor(256 * heightMap[rgb.red]);
+                rgb.green = (int) Math.floor(256 * heightMap[rgb.green]);
+                rgb.blue = (int) Math.floor(256 * heightMap[rgb.blue]);
+
+                this.img.setRGB(x, y, rgb.toInt());
+            }
+        }
+
+        this.imageLabel.setIcon(new ImageIcon(this.img));
     }
 }
 
 public class Main {
     private static ImageDisplay imgDisplay;
+    private static JLabel imageLabel;
 
     private static void showImageWindow() {
         final JFrame frame = new JFrame("PR01");
@@ -465,8 +521,8 @@ public class Main {
         BoxLayout boxLayout = new BoxLayout(frame.getContentPane(), BoxLayout.Y_AXIS);
         frame.setLayout(boxLayout);
 
-        final JLabel label = new JLabel();
-        frame.add(label);
+        imageLabel = new JLabel();
+        frame.add(imageLabel);
 
         JMenuBar menuBar = new JMenuBar();
         JMenu menu = new JMenu("File");
@@ -482,10 +538,6 @@ public class Main {
 
                 try {
                     imgDisplay.loadImageFromFile(f);
-
-                    BufferedImage loadedImage = imgDisplay.getImage();
-
-                    label.setIcon(new ImageIcon(loadedImage));
 
                     frame.pack();
                 } catch (IOException ioExp) {
@@ -507,8 +559,6 @@ public class Main {
 
                 try {
                     imgDisplay.loadHueReplacementImage(f);
-
-                    label.setIcon(new ImageIcon(imgDisplay.getImage()));
                 } catch (IOException ioExp) {
                     System.out.println("Invalid file");
                 }
@@ -525,12 +575,13 @@ public class Main {
         frame.setVisible(true);
     }
 
-    private static void showCurveWindow() {
+    private static void showCurveWindow(ImageDisplay display) {
         JFrame curveWindow = new JFrame("Curve");
         curveWindow.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         curveWindow.setSize(600, 600);
 
         CurvePanel curvePanel = new CurvePanel();
+        curvePanel.setTargetDisplay(display);
 
         curveWindow.add(curvePanel);
         curveWindow.setVisible(true);
@@ -539,9 +590,10 @@ public class Main {
     public static void main(String[] args) {
         int argc = args.length;
 
-        imgDisplay = new ImageDisplay();
+        showImageWindow();
 
-//        showImageWindow();
-        showCurveWindow();
+        imgDisplay = new ImageDisplay(imageLabel);
+
+        showCurveWindow(imgDisplay);
     }
 }
