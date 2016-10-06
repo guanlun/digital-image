@@ -224,7 +224,7 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
     }
 
     private void updateImage() {
-        this.imageDisplay.applyMapping(this.heightMap);
+         this.imageDisplay.applyMapping(this.heightMap);
     }
 
     @Override
@@ -275,6 +275,11 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
             }
         }
 
+        Vec2 startPt = this.curve.points.get(0);
+        for (int i = 0; i < Math.ceil(startPt.x * 256); i++) {
+            this.heightMap[i] = 0;
+        }
+
         for (int i = 0; i < pointCount - 1; i++) {
             Vec2 p0 = this.curve.points.get(i);
             Vec2 p1 = this.curve.points.get(i + 1);
@@ -304,6 +309,11 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
             }
         }
 
+        Vec2 endPt = this.curve.points.get(pointCount - 1);
+        for (int i = (int) Math.floor(endPt.x * 256); i < 256; i++) {
+            this.heightMap[i] = 1;
+        }
+
         double lastX = 0;
         double lastY = 0;
 
@@ -328,8 +338,7 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
     }
 
     @Override
-    public void mouseClicked(MouseEvent e) {
-    }
+    public void mouseClicked(MouseEvent e) { }
 
     @Override
     public void mousePressed(MouseEvent e) {
@@ -352,9 +361,11 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
                 this.selectedPoint = point;
 
                 if (i == 0) {
+                    this.minX = 0;
                     this.maxX = this.curve.points.get(i + 1).x - 0.15;
                 } else if (i == pointCount - 1) {
                     this.minX = this.curve.points.get(i - 1).x + 0.15;
+                    this.maxX = 1;
                 } else {
                     this.minX = this.curve.points.get(i - 1).x + 0.15;
                     this.maxX = this.curve.points.get(i + 1).x - 0.15;
@@ -372,6 +383,10 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
         double newPtX = (double)(x) / DIM;
         double newPtY = 1 - (double)(y) / DIM;
         Vec2 point = new Vec2(newPtX, newPtY);
+
+        if (insertIndex <= 0) {
+            return;
+        }
 
         double minX = this.curve.points.get(insertIndex - 1).x + 0.15;
         double maxX = this.curve.points.get(insertIndex).x - 0.15;
@@ -396,14 +411,10 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
     }
 
     @Override
-    public void mouseEntered(MouseEvent e) {
-
-    }
+    public void mouseEntered(MouseEvent e) { }
 
     @Override
-    public void mouseExited(MouseEvent e) {
-
-    }
+    public void mouseExited(MouseEvent e) { }
 
     @Override
     public void mouseDragged(MouseEvent e) {
@@ -414,8 +425,28 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
         double x = Math.min(this.maxX, Math.max(this.minX, ((double)(e.getX()) - OFFSET) / DIM));
         double y = Math.min(1, Math.max(0, 1 - ((double)(e.getY()) - OFFSET) / DIM));
 
-        this.selectedPoint.x = x;
-        this.selectedPoint.y = y;
+        int pointCount = this.curve.points.size();
+
+        if (this.selectedPoint == this.curve.points.get(0)) {
+            if (x > y) {
+                this.selectedPoint.x = x;
+                this.selectedPoint.y = 0;
+            } else {
+                this.selectedPoint.x = 0;
+                this.selectedPoint.y = y;
+            }
+        } else if (this.selectedPoint == this.curve.points.get(pointCount - 1)) {
+            if (x < y) {
+                this.selectedPoint.x = x;
+                this.selectedPoint.y = 1;
+            } else {
+                this.selectedPoint.x = 1;
+                this.selectedPoint.y = y;
+            }
+        } else {
+            this.selectedPoint.x = x;
+            this.selectedPoint.y = y;
+        }
 
         this.repaint();
 
@@ -423,8 +454,7 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
     }
 
     @Override
-    public void mouseMoved(MouseEvent e) {
-    }
+    public void mouseMoved(MouseEvent e) { }
 }
 
 class ImageDisplay {
@@ -440,8 +470,11 @@ class ImageDisplay {
         this.imageLabel = label;
     }
 
-    public void loadImageFromFile(File f) throws IOException {
+    public boolean imageLoaded() {
+        return (this.img != null);
+    }
 
+    public void loadImageFromFile(File f) throws IOException {
         Image image = ImageIO.read(f);
 
         this.img = new BufferedImage(image.getWidth(null), image.getHeight(null), BufferedImage.TYPE_INT_RGB);
@@ -485,6 +518,7 @@ class ImageDisplay {
                 baseHsvColor.hue = replacementHsvColor.hue;
 
                 this.img.setRGB(x, y, baseHsvColor.toRGB().toInt());
+                this.origImg.setRGB(x, y, baseHsvColor.toRGB().toInt());
             }
         }
 
@@ -498,9 +532,9 @@ class ImageDisplay {
 
                 RGB rgb = RGB.fromInt(baseColor);
 
-                rgb.red = (int) Math.floor(256 * heightMap[rgb.red]);
-                rgb.green = (int) Math.floor(256 * heightMap[rgb.green]);
-                rgb.blue = (int) Math.floor(256 * heightMap[rgb.blue]);
+                rgb.red = Math.min(255, (int) (256 * heightMap[rgb.red]));
+                rgb.green = Math.min(255, (int) (256 * heightMap[rgb.green]));
+                rgb.blue = Math.min(255, (int) (256 * heightMap[rgb.blue]));
 
                 this.img.setRGB(x, y, rgb.toInt());
             }
@@ -514,15 +548,18 @@ public class Main {
     private static ImageDisplay imgDisplay;
     private static JLabel imageLabel;
 
-    private static void showImageWindow() {
-        final JFrame frame = new JFrame("PR01");
-        frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+    private static JFrame imgFrame;
+    private static JFrame curveWindow;
 
-        BoxLayout boxLayout = new BoxLayout(frame.getContentPane(), BoxLayout.Y_AXIS);
-        frame.setLayout(boxLayout);
+    private static void showImageWindow() {
+        imgFrame = new JFrame("PR01");
+        imgFrame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+
+        BoxLayout boxLayout = new BoxLayout(imgFrame.getContentPane(), BoxLayout.Y_AXIS);
+        imgFrame.setLayout(boxLayout);
 
         imageLabel = new JLabel();
-        frame.add(imageLabel);
+        imgFrame.add(imageLabel);
 
         JMenuBar menuBar = new JMenuBar();
         JMenu menu = new JMenu("File");
@@ -532,14 +569,20 @@ public class Main {
             public void actionPerformed(ActionEvent e) {
                 JFileChooser fc = new JFileChooser();
 
-                fc.showOpenDialog(frame);
+                fc.showOpenDialog(imgFrame);
 
                 File f = fc.getSelectedFile();
 
                 try {
                     imgDisplay.loadImageFromFile(f);
 
-                    frame.pack();
+                    imgFrame.pack();
+
+                    if (curveWindow != null) {
+                        curveWindow.setVisible(false);
+                    }
+
+                    showCurveWindow(imgDisplay);
                 } catch (IOException ioExp) {
                     System.out.println("Invalid file");
                 }
@@ -551,16 +594,18 @@ public class Main {
         JMenuItem hueImageOpenItem = new JMenuItem(new AbstractAction("Open Hue Replacement Image") {
             @Override
             public void actionPerformed(ActionEvent e) {
-                JFileChooser fc = new JFileChooser();
+                if (imgDisplay.imageLoaded()) {
+                    JFileChooser fc = new JFileChooser();
 
-                fc.showOpenDialog(frame);
+                    fc.showOpenDialog(imgFrame);
 
-                File f = fc.getSelectedFile();
+                    File f = fc.getSelectedFile();
 
-                try {
-                    imgDisplay.loadHueReplacementImage(f);
-                } catch (IOException ioExp) {
-                    System.out.println("Invalid file");
+                    try {
+                        imgDisplay.loadHueReplacementImage(f);
+                    } catch (IOException ioExp) {
+                        System.out.println("Invalid file");
+                    }
                 }
             }
         });
@@ -569,15 +614,15 @@ public class Main {
 
         menuBar.add(menu);
 
-        frame.setJMenuBar(menuBar);
+        imgFrame.setJMenuBar(menuBar);
 
-        frame.pack();
-        frame.setVisible(true);
+        imgFrame.setSize(800, 600);
+        imgFrame.setVisible(true);
     }
 
     private static void showCurveWindow(ImageDisplay display) {
-        JFrame curveWindow = new JFrame("Curve");
-        curveWindow.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+        curveWindow = new JFrame("Curve");
+
         curveWindow.setSize(600, 600);
 
         CurvePanel curvePanel = new CurvePanel();
@@ -593,7 +638,5 @@ public class Main {
         showImageWindow();
 
         imgDisplay = new ImageDisplay(imageLabel);
-
-        showCurveWindow(imgDisplay);
     }
 }
