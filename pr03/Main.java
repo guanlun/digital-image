@@ -8,11 +8,10 @@
  *
  * Commands:
  * javac Main.java
- * java Main <SHAPE>
+ * java Main
  */
 import javax.imageio.ImageIO;
 import javax.swing.*;
-import javax.swing.text.Segment;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.MouseEvent;
@@ -163,20 +162,17 @@ class Vec2 {
         this.y = y;
     }
 
-    double dim() {
-        return Math.sqrt(this.x * this.x + this.y * this.y);
+    Vec2 sub(Vec2 v) {
+        return new Vec2(this.x - v.x, this.y - v.y);
     }
 
-    void normalize() {
-        double dim = this.dim();
-
-        this.x /= dim;
-        this.y /= dim;
+    double dim() {
+        return Math.sqrt(this.x * this.x + this.y * this.y);
     }
 }
 
 class Curve {
-    class Segment {
+    static class Segment {
         Vec2 p0;
         Vec2 p1;
         Vec2 v0;
@@ -189,14 +185,6 @@ class Curve {
             this.p1 = p1;
             this.v0 = v0;
             this.v1 = v1;
-
-//            this.intermediatePoints = new ArrayList<Vec2>(100);
-//
-//            for (double t = 0; t <= 1; t += 0.01) {
-//                Vec2 pos = this.getValueAt(t);
-//
-//                this.intermediatePoints.add(pos);
-//            }
         }
 
         Vec2 getValueAt(double t) {
@@ -218,17 +206,12 @@ class Curve {
 
     ArrayList<Segment> segments;
 
+    ArrayList<Vec2> points;
+
     Curve() {
-        segments = new ArrayList<Segment>();
-
-        Segment initSegment = new Segment(
-                new Vec2(0, 0),
-                new Vec2(1, 1),
-                new Vec2(0, 1),
-                new Vec2(1, 0)
-        );
-
-        segments.add(initSegment);
+        points = new ArrayList<Vec2>();
+        points.add(new Vec2(0, 0));
+        points.add(new Vec2(1, 1));
     }
 }
 
@@ -243,11 +226,8 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
     private static final int SELECTION_V0 = 3;
     private static final int SELECTION_V1 = 4;
 
-    private Curve.Segment selectedSegment;
-    private int selectionType;
 
-//    private Vec2 selectedPoint;
-//    private Vec2 selectedDir;
+    private Vec2 selectedPoint;
 
     CurvePanel() {
         super();
@@ -257,10 +237,7 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
         this.addMouseListener(this);
         this.addMouseMotionListener(this);
 
-//        this.selectedPoint = null;
-//        this.selectedDir = null;
-
-        this.selectedSegment = null;
+        this.selectedPoint = null;
     }
 
     @Override
@@ -281,50 +258,71 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
         }
 
         g2.setColor(Color.BLACK);
-        for (Curve.Segment seg : this.curve.segments) {
-            Vec2 lastPos = seg.p0;
 
-            for (double t = 0.01; t <= 1; t += 0.01) {
-                Vec2 pos = seg.getValueAt(t);
+        int pointCount = this.curve.points.size();
+
+        ArrayList<Vec2> tangentVecs = new ArrayList<Vec2>();
+
+        for (int i = 0; i < pointCount; i++) {
+            Vec2 currPt = this.curve.points.get(i);
+
+            if (i == 0) {
+                Vec2 nextPt = this.curve.points.get(i + 1);
+
+                tangentVecs.add(nextPt.sub(currPt));
+
+            } else if (i == pointCount - 1){
+                Vec2 prevPt = this.curve.points.get(i - 1);
+
+                tangentVecs.add(currPt.sub(prevPt));
+
+            } else {
+                Vec2 nextPt = this.curve.points.get(i + 1);
+                Vec2 prevPt = this.curve.points.get(i - 1);
+
+                Vec2 diff = nextPt.sub(prevPt);
+
+                tangentVecs.add(new Vec2(diff.x / 2.0, diff.y / 2.0));
+            }
+        }
+
+        for (int i = 0; i < pointCount - 1; i++) {
+            Vec2 p0 = this.curve.points.get(i);
+            Vec2 p1 = this.curve.points.get(i + 1);
+
+            Vec2 v0 = tangentVecs.get(i);
+            Vec2 v1 = tangentVecs.get(i + 1);
+
+            double lastX = p0.x;
+            double lastY = p0.y;
+
+            for (double t = 0.01; t <= 1.01; t += 0.01) {
+                double x =
+                        (2 * Math.pow(t, 3) - 3 * t * t + 1) * p0.x
+                                + (Math.pow(t, 3) - 2 * t * t + t) * v0.x
+                                + (-2 * Math.pow(t, 3) + 3 * t * t) * p1.x
+                                + (Math.pow(t, 3) - t * t) * v1.x;
+
+                double y =
+                        (2 * Math.pow(t, 3) - 3 * t * t + 1) * p0.y
+                                + (Math.pow(t, 3) - 2 * t * t + t) * v0.y
+                                + (-2 * Math.pow(t, 3) + 3 * t * t) * p1.y
+                                + (Math.pow(t, 3) - t * t) * v1.y;
+
                 g2.drawLine(
-                        (int) Math.round(OFFSET + lastPos.x * DIM),
-                        (int) Math.round(OFFSET + (1 - lastPos.y) * DIM),
-                        (int) Math.round(OFFSET + pos.x * DIM),
-                        (int) Math.round(OFFSET + (1 - pos.y) * DIM)
+                        (int) Math.round(OFFSET + lastX * DIM),
+                        (int) Math.round(OFFSET + (1 - lastY) * DIM),
+                        (int) Math.round(OFFSET + x * DIM),
+                        (int) Math.round(OFFSET + (1 - y) * DIM)
                 );
 
-                lastPos = pos;
-
+                lastX = x;
+                lastY = y;
             }
-//            Vec2 lastPos = seg.intermediatePoints.get(0);
-//
-//            for (Vec2 pos : seg.intermediatePoints) {
-//                g2.drawLine(
-//                        (int) Math.round(OFFSET + lastPos.x * DIM),
-//                        (int) Math.round(OFFSET + (1 - lastPos.y) * DIM),
-//                        (int) Math.round(OFFSET + pos.x * DIM),
-//                        (int) Math.round(OFFSET + (1 - pos.y) * DIM)
-//                );
-//
-//                lastPos = pos;
-//            }
+        }
 
-            g2.setColor(Color.RED);
-            g2.setStroke(new BasicStroke(3));
-
-            g2.drawLine(
-                    (int) Math.round(OFFSET + seg.p0.x * DIM),
-                    (int) Math.round(OFFSET + (1 - seg.p0.y) * DIM),
-                    (int) Math.round(OFFSET + seg.p0.x * DIM + 100 * seg.v0.x),
-                    (int) Math.round(OFFSET + (1 - seg.p0.y) * DIM - 100 * seg.v0.y)
-            );
-
-            g2.drawLine(
-                    (int) Math.round(OFFSET + seg.p1.x * DIM),
-                    (int) Math.round(OFFSET + (1 - seg.p1.y) * DIM),
-                    (int) Math.round(OFFSET + seg.p1.x * DIM - 100 * seg.v1.x),
-                    (int) Math.round(OFFSET + (1 - seg.p1.y) * DIM + 100 * seg.v1.y)
-            );
+        for (Vec2 pt : this.curve.points) {
+            g2.drawRect((int) Math.round(pt.x * DIM + OFFSET - 5), (int) Math.round((1 - pt.y) * DIM + OFFSET - 5), 10, 10);
         }
     }
 
@@ -337,59 +335,39 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
         int x = e.getX() - OFFSET;
         int y = e.getY() - OFFSET;
 
-        for (Curve.Segment seg : this.curve.segments) {
-            int dx0 = (int)(seg.p0.x * DIM - x);
-            int dy0 = (int)((1 - seg.p0.y) * DIM - y);
+        int insertIndex = -1;
 
-            double dist0 = Math.sqrt(dx0 * dx0 + dy0 * dy0);
+        for (int i = 0; i < this.curve.points.size(); i++) {
+            Vec2 point = this.curve.points.get(i);
 
-            if (dist0 < 10) {
-                this.selectedSegment = seg;
-                this.selectionType = SELECTION_P0;
+            int dx = (int)(point.x * DIM - x);
+            int dy = (int)((1 - point.y) * DIM - y);
+
+            double dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist < 10) {
+                this.selectedPoint = point;
                 return;
             }
 
-            int dx1 = (int)(seg.p1.x * DIM - x);
-            int dy1 = (int)((1 - seg.p1.y) * DIM - y);
-
-            double dist1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
-
-            if (dist1 < 10) {
-                this.selectedSegment = seg;
-                this.selectionType = SELECTION_P1;
-                return;
+            if ((point.x * DIM > x) && (insertIndex == -1)) {
+                insertIndex = i;
             }
-
-            Vec2 normalV0 = new Vec2(seg.v0.y, -seg.v0.x);
-
-            double distV0 = Math.abs(normalV0.x * x + normalV0.y * y);
-
-            if (distV0 < 10 && dist0 < 100) {
-                this.selectedSegment = seg;
-                this.selectionType = SELECTION_V0;
-            }
-
-
-//            for (Vec2 pos : seg.intermediatePoints) {
-//                int dx = (int)(pos.x * DIM) - x;
-//                int dy = (int)((1 - pos.y) * DIM) - y;
-//
-//                double dist = Math.sqrt(dx * dx + dy * dy);
-//
-//                if (dist < 5) {
-//                    System.out.println(dist);
-//                    break;
-//                }
-//            }
         }
+
+        // No near points found, add a new point
+        Vec2 point = new Vec2((double)(x) / DIM, 1 - (double)(y) / DIM);
+
+        this.curve.points.add(insertIndex, point);
+
+        this.selectedPoint = point;
+
+        this.repaint();
     }
 
     @Override
     public void mouseReleased(MouseEvent e) {
-//        this.selectedPoint = null;
-//        this.selectedDir = null;
-
-        this.selectedSegment = null;
+        this.selectedPoint = null;
     }
 
     @Override
@@ -404,48 +382,17 @@ class CurvePanel extends JPanel implements MouseListener, MouseMotionListener {
 
     @Override
     public void mouseDragged(MouseEvent e) {
-        System.out.println(this.selectionType);
-        if (this.selectedSegment == null) {
+        if (this.selectedPoint == null) {
             return;
         }
 
         double x = Math.min(1, Math.max(0, ((double)(e.getX()) - OFFSET) / DIM));
         double y = Math.min(1, Math.max(0, 1 - ((double)(e.getY()) - OFFSET) / DIM));
 
-        switch (this.selectionType) {
-            case SELECTION_P0:
-                this.selectedSegment.p0.x = x;
-                this.selectedSegment.p0.y = y;
-                break;
-            case SELECTION_P1:
-                this.selectedSegment.p1.x = x;
-                this.selectedSegment.p1.y = y;
-                break;
-            case SELECTION_V0:
-//                double dx = x - this.selectedSegment.p0.x;
-//                double dy = y - this.selectedSegment.p0.y;
-
-                Vec2 diff = new Vec2(x - this.selectedSegment.p0.x, y - this.selectedSegment.p0.y);
-                diff.normalize();
-
-                System.out.println(diff.x + " " + diff.y);
-
-                this.selectedSegment.v0.x = diff.x;
-                this.selectedSegment.v0.y = diff.y;
-                break;
-        }
+        this.selectedPoint.x = x;
+        this.selectedPoint.y = y;
 
         this.repaint();
-
-//        if (this.selectedPoint != null) {
-//            this.selectedPoint.x = x;
-//            this.selectedPoint.y = y;
-//
-//            this.repaint();
-//        } else if (this.selectedDir != null) {
-//
-//            this.repaint();
-//        }
     }
 
     @Override
